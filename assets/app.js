@@ -405,6 +405,8 @@ async function init() {
     if (elPageInfo && elPageInfo.parentElement) elPageInfo.parentElement.style.display = "none";
     // 4) HIDE the homepage showcase rows (Best Malls/Hotels/Restaurants/Schools)
     if (elShowcase) elShowcase.style.display = "none";
+    // Hide/remove the Clear filters chip if it exists
+    document.getElementById('clear-filters')?.remove();
     }
 
 
@@ -499,42 +501,46 @@ renderShowcases();
       setQueryParam('page', currentPage);
       render();
     });
-        // Clear filters button (auto-create if missing)
+    // Clear filters button (auto-create if missing) — SKIP on Best Things landing
+    if (!forceBestThingsView) {
     let elClear = document.getElementById('clear-filters');
     if (!elClear) {
-      elClear = document.createElement('button');
-      elClear.id = 'clear-filters';
-      elClear.type = 'button';
-      elClear.className = 'chip';
-      elClear.title = 'Reset search, pricing, and categories';
-      elClear.textContent = 'Clear filters';
-      // place right after the chips row
-      if (elChips && elChips.parentNode) {
-        elChips.parentNode.insertBefore(elClear, elChips.nextSibling);
-      } else {
-        // fallback: append somewhere visible
-        document.body.appendChild(elClear);
-      }
+    elClear = document.createElement('button');
+    elClear.id = 'clear-filters';
+    elClear.type = 'button';
+    elClear.className = 'chip';
+    elClear.title = 'Reset search, pricing, and categories';
+    elClear.textContent = 'Clear filters';
+    // place right after the chips row
+    if (elChips && elChips.parentNode) {
+      elChips.parentNode.insertBefore(elClear, elChips.nextSibling);
+    } else {
+      // fallback: append somewhere visible
+      document.body.appendChild(elClear);
+    }
     }
     elClear.addEventListener('click', () => {
-      // reset state
-      selectedCategories.clear();
-      currentQuery = '';
-      currentPage = 1;
+    // reset state
+    selectedCategories.clear();
+    currentQuery = '';
+    currentPage = 1;
 
-      // reset UI controls
-      elSearch.value = '';
-      setQueryParam('category', null);
-      setQueryParam('q', null);
-      setQueryParam('page', 1);
+    // reset UI controls
+    elSearch.value = '';
+    setQueryParam('category', null);
+    setQueryParam('q', null);
+    setQueryParam('page', 1);
 
-      updateChipsActive();
-      applyFilters();
+    updateChipsActive();
+    applyFilters();
     });
-
+    } else {
+    // Special landing: ensure it's gone if present
+    document.getElementById('clear-filters')?.remove();
+    }
 
     applyFilters(true);
-  }
+    }
 
   // ---------- FILTERING ----------
   // ---------- FILTERING ----------
