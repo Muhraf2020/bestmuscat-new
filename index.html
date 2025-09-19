@@ -15,7 +15,7 @@
     </div>
   </header>
 
-  <aside id="filter-drawer" class="filter-drawer hidden">
+  <aside id="filter-drawer" class="filter-drawer">
     <div class="filter-content">
       <h2>Filters</h2>
       <div class="filter-group" id="filter-awards">
@@ -46,6 +46,11 @@
   </aside>
 
   <main class="main-content">
+    <!-- Category chips bar -->
+    <div id="categories-container" class="categories-chips" aria-label="Browse categories">
+      <!-- Chips are injected here by app.js -->
+    </div>
+
     <div class="sort-controls">
       <label for="sort-select">Sort by:</label>
       <select id="sort-select">

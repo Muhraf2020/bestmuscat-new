@@ -91,6 +91,37 @@ body {
   gap: 1rem;
 }
 
+/* Category chips bar */
+.categories-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.categories-chips .chip {
+  display: inline-block;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+  border: 1px solid #e2e5e9;
+  border-radius: 16px;
+  background-color: #f2f2f2;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.categories-chips .chip:hover {
+  background-color: #e2e5e9;
+}
+
+.categories-chips .chip.active {
+  background-color: #007bff;
+  color: #fff;
+  border-color: #007bff;
+}
+
 .card {
   display: block;
   border: 1px solid #e2e5e9;

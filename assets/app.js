@@ -10,6 +10,9 @@
 // In-memory cache of places loaded from data/places.json.
 let PLACES_CACHE = null;
 
+// Selected category for filtering. Null means show all.
+let selectedCategory = null;
+
 /**
  * Fetch the canonical list of places. The result is cached.
  * @returns {Promise<Array>} A promise that resolves to an array of place objects.
@@ -24,6 +27,54 @@ async function loadPlaces() {
   return data;
 }
 window.loadPlaces = loadPlaces;
+
+/**
+ * Fetch the list of categories defined in data/categories.json.
+ * @returns {Promise<object>} A promise that resolves to a mapping of category names to metadata.
+ */
+async function loadCategories() {
+  const res = await fetch('data/categories.json');
+  return await res.json();
+}
+window.loadCategories = loadCategories;
+
+/**
+ * Populate the category chips bar from categories.json.
+ * Adds click handlers that set the selectedCategory and re-render the list.
+ */
+async function populateCategories() {
+  const container = document.getElementById('categories-container');
+  if (!container) return;
+  const categories = await loadCategories();
+  const fragments = [];
+  Object.keys(categories).forEach(cat => {
+    fragments.push(`<button class="chip" data-category="${cat}">${cat}</button>`);
+  });
+  container.innerHTML = fragments.join('');
+  // Click handler using event delegation
+  container.addEventListener('click', ev => {
+    const target = ev.target;
+    if (target && target.matches('.chip')) {
+      const cat = target.getAttribute('data-category');
+      // If clicking the same active chip, clear selection
+      if (selectedCategory === cat) {
+        selectedCategory = null;
+      } else {
+        selectedCategory = cat;
+      }
+      // Update active state
+      container.querySelectorAll('.chip').forEach(el => {
+        el.classList.toggle('active', el.getAttribute('data-category') === selectedCategory);
+      });
+      renderList();
+    }
+  });
+  // Set active state if a category is pre-selected
+  container.querySelectorAll('.chip').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-category') === selectedCategory);
+  });
+}
+window.populateCategories = populateCategories;
 
 /**
  * Parse "HH:MM" into minutes since midnight.
@@ -125,6 +176,10 @@ async function renderList() {
   const places = await loadPlaces();
   // Build filter state
   let results = [...places];
+  // Category filter
+  if (selectedCategory) {
+    results = results.filter(p => Array.isArray(p.categories) && p.categories.includes(selectedCategory));
+  }
 
   // Search filter
   const searchInput = document.getElementById('search-input');
@@ -242,7 +297,10 @@ function initIndexPage() {
   }
 
   populateFilterOptions().then(() => {
-    renderList();
+    // Populate category chips before first render
+    populateCategories().then(() => {
+      renderList();
+    });
   });
 }
 
