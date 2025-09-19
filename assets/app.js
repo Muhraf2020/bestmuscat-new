@@ -403,6 +403,8 @@ async function init() {
     if (elGrid)       elGrid.style.display       = "none";
     if (elPagination) elPagination.style.display = "none";
     if (elPageInfo && elPageInfo.parentElement) elPageInfo.parentElement.style.display = "none";
+    // 4) HIDE the homepage showcase rows (Best Malls/Hotels/Restaurants/Schools)
+    if (elShowcase) elShowcase.style.display = "none";
     }
 
 
@@ -537,12 +539,10 @@ renderShowcases();
   // ---------- FILTERING ----------
   // ---------- FILTERING ----------
   function applyFilters(first=false) {
-    // NEW: special landing — show home content, suppress listing UI
+    // NEW: special landing — show ONLY the Best Things section
     if (forceBestThingsView) {
-    // Show your home/showcase sections if you want them visible here
-    if (elShowcase) elShowcase.style.display = "";
-    const elVisit = document.getElementById('visit-muscat');
-    if (elVisit) elVisit.style.display = "";
+    // Ensure homepage showcase stays hidden
+    if (elShowcase) elShowcase.style.display = "none";
 
     // Keep listing bits hidden
     if (elGrid)       elGrid.style.display       = "none";
