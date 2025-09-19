@@ -62,6 +62,8 @@
   let currentPricing = "all";
   let currentQuery = "";
   let currentPage = 1;
+  // NEW: special view flag for "?q=Best Things to Do"
+  let forceBestThingsView = false;
 
   // ---------- ELEMENTS ----------
   const elSearch     = document.getElementById("search");
@@ -82,6 +84,8 @@
   const elShowHotels = document.getElementById("showcase-hotels");
   const elShowRests  = document.getElementById("showcase-restaurants");
   const elShowSchools= document.getElementById("showcase-schools");
+  // NEW: back-to-directory row (hidden by default in index.html)
+  const elBack       = document.getElementById("bt-back");
 
 
   // ---------- UTIL ----------
@@ -380,6 +384,27 @@ async function init() {
     const q = qs.get("q") || "";
     currentQuery = q;
     elSearch.value = q;
+    // --- Special landing: "?q=Best Things to Do" ---
+    const isBestThingsLanding = (q || "").trim().toLowerCase() === "best things to do";
+    if (isBestThingsLanding) {
+    // 1) Keep URL as-is, but don't let search/filter logic treat it as a query
+    forceBestThingsView = true;
+    currentQuery = "";
+    elSearch.value = "";
+
+    // 2) Show the "← Back to directory" row
+    if (elBack) elBack.hidden = false;
+
+    // 3) Hide the list UI that would otherwise say "0–0 of 0"
+    const toolbar = document.querySelector(".toolbar");
+    if (toolbar) toolbar.style.display = "none";
+    if (elChips)      elChips.style.display      = "none";
+    if (elCount)      elCount.style.display      = "none";
+    if (elGrid)       elGrid.style.display       = "none";
+    if (elPagination) elPagination.style.display = "none";
+    if (elPageInfo && elPageInfo.parentElement) elPageInfo.parentElement.style.display = "none";
+    }
+
 
     // Page from URL
     const pageParam = parseInt(qs.get("page") || "1", 10);
@@ -512,6 +537,23 @@ renderShowcases();
   // ---------- FILTERING ----------
   // ---------- FILTERING ----------
   function applyFilters(first=false) {
+    // NEW: special landing — show home content, suppress listing UI
+    if (forceBestThingsView) {
+    // Show your home/showcase sections if you want them visible here
+    if (elShowcase) elShowcase.style.display = "";
+    const elVisit = document.getElementById('visit-muscat');
+    if (elVisit) elVisit.style.display = "";
+
+    // Keep listing bits hidden
+    if (elGrid)       elGrid.style.display       = "none";
+    if (elPagination) elPagination.style.display = "none";
+    if (elCount)      elCount.style.display      = "none";
+    if (elPageInfo && elPageInfo.parentElement) elPageInfo.parentElement.style.display = "none";
+
+    // Do not proceed to normal filtering/pagination/rendering
+    return;
+  }
+  // ... (existing code continues)
     const catFilter = Array.from(selectedCategories);
     let arr = tools.slice();
 
