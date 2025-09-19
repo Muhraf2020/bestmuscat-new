@@ -7,6 +7,9 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Safety: only run on pages that actually have the section
+  if (!document.getElementById('best-things')) return;
+  
   // Data definitions for each category. Images reference local assets.
   const bestThingsData = {
     eat: {
