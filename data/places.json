@@ -1,67 +1,152 @@
 [
   {
-    "id": "00000000-0000-0000-0000-000000000001",
-    "slug": "sample-place",
-    "name": "Sample Place",
-    "categories": ["Restaurants"],
-    "subcategories": ["Fine Dining"],
-    "badges": ["Gem"],
-    "price_range": { "symbol": "$$$", "min": 10, "max": 200, "currency": "OMR" },
-    "cuisines": ["Omani", "Seafood"],
-    "meals": ["Breakfast", "Lunch", "Dinner"],
-    "dishes": ["Shuwa", "Kingfish"],
-    "amenities": ["Wheelchair accessible", "Valet parking"],
-    "attributes": { "vegetarian": true, "vegan": true, "halal": true },
-    "rating_overall": 9.1,
+    "id": "2eed1ea2-7560-4038-9014-ea3bfbe499fc",
+    "slug": "demo-cafe-qurum",
+    "name": "Demo Caf\u00e9",
+    "categories": [
+      "Cafes"
+    ],
+    "subcategories": [
+      "Coffee"
+    ],
+    "badges": [
+      "Gem"
+    ],
+    "price_range": {
+      "symbol": "$$",
+      "min": 1,
+      "max": 10,
+      "currency": "OMR"
+    },
+    "cuisines": [
+      "Cafe"
+    ],
+    "meals": [
+      "Breakfast",
+      "Lunch"
+    ],
+    "dishes": [
+      "Cappuccino",
+      "Croissant"
+    ],
+    "amenities": [
+      "Wheelchair accessible",
+      "Wi\u2011Fi"
+    ],
+    "attributes": {
+      "vegetarian": true,
+      "vegan": true,
+      "halal": true
+    },
+    "rating_overall": 9.0,
     "subscores": {
       "Food Quality": 9.0,
-      "Service": 9.2,
-      "Ambience": 9.3,
-      "Value for Money": 8.6,
-      "Accessibility & Amenities": 8.9
+      "Service": 8.8,
+      "Ambience": 8.9,
+      "Value for Money": 9.1,
+      "Accessibility & Amenities": 8.5
     },
     "hours": {
-      "Mon": [["09:00","23:00"]],
-      "Tue": [["09:00","23:00"]],
-      "Wed": [["09:00","23:00"]],
-      "Thu": [["09:00","23:00"]],
-      "Fri": [["09:00","23:00"]],
-      "Sat": [["09:00","23:00"]],
-      "Sun": []
+      "Mon": [
+        [
+          "08:00",
+          "22:00"
+        ]
+      ],
+      "Tue": [
+        [
+          "08:00",
+          "22:00"
+        ]
+      ],
+      "Wed": [
+        [
+          "08:00",
+          "22:00"
+        ]
+      ],
+      "Thu": [
+        [
+          "08:00",
+          "23:00"
+        ]
+      ],
+      "Fri": [
+        [
+          "09:00",
+          "23:00"
+        ]
+      ],
+      "Sat": [
+        [
+          "09:00",
+          "23:00"
+        ]
+      ],
+      "Sun": [
+        [
+          "09:00",
+          "22:00"
+        ]
+      ]
     },
-    "busy_profile": null,
     "location": {
       "lat": 23.606,
       "lng": 58.593,
       "neighborhood": "Qurum",
-      "address": "Street, Area, Muscat 123",
+      "address": "Qurum, Muscat 123",
       "plus_code": "7JQX+3C Muscat",
       "what3words": null
     },
-    "landmarks": ["Royal Opera House Muscat","Qurum Beach"],
+    "landmarks": [
+      "Royal Opera House Muscat",
+      "Qurum Beach"
+    ],
     "actions": {
-      "website": "https://example.com",
-      "phone": "+96812345678",
-      "maps_url": "https://maps.google.com/?q=23.606,58.593",
+      "website": null,
+      "phone": null,
+      "maps_url": null,
       "menu_url": null,
       "booking_url": null
     },
     "gallery": [],
-    "about": "This is a sample place used as a template. Replace it with real data using the ingestion scripts.",
+    "about": "A friendly caf\u00e9 in Qurum serving specialty coffee and fresh pastries.",
     "best_times": [
-      { "label": "Buzzing", "window": "Fri–Sat 7–9 PM" },
-      { "label": "Relaxed", "window": "Wed 6–7 PM" }
+      {
+        "label": "Buzzing",
+        "window": "Fri\u2013Sat 7\u20139 PM"
+      },
+      {
+        "label": "Relaxed",
+        "window": "Wed 6\u20137 PM"
+      }
     ],
     "public_sentiment": {
-      "source": "Google Reviews",
+      "source": "Demo",
       "count": 0,
-      "summary": "",
-      "last_updated": "2025-09-18"
+      "summary": "No reviews yet.",
+      "last_updated": "2025-09-19"
     },
-    "faqs": [],
+    "faqs": [
+      {
+        "q": "Do you have parking?",
+        "a": "Street parking nearby."
+      }
+    ],
     "verified": false,
-    "methodology_note": "",
-    "provenance": [],
-    "last_updated": "2025-09-18"
+    "methodology_note": "Demo record for structure validation.",
+    "provenance": [
+      {
+        "provider": "manual",
+        "fields": [
+          "name",
+          "location",
+          "hours"
+        ],
+        "terms_url": null,
+        "collected_at": "2025-09-19"
+      }
+    ],
+    "last_updated": "2025-09-19"
   }
 ]

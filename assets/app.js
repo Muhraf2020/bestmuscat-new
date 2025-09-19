@@ -1,494 +1,677 @@
-/**
- * Best Muscat client-side application logic.
- * This script powers both the index (listings) page and the detail page.
- * It handles fetching the canonical dataset, applying filters and sort orders,
- * computing open/closed status, and rendering cards and detail views.
- */
+/* FILE: assets/app.js */
+(function () {
+  // ---------- CONFIG ----------
+  const CONFIG = {
+    // The Google form is not used in the Best Muscat directory. Leave this blank or replace with your own form URL.
+    GOOGLE_FORM_URL: "",
+    // Show up to nine items per page. This value is tuned for a three‑column layout (3×3)
+    ITEMS_PER_PAGE: 9,
+    // Set the canonical site URL for JSON‑LD and og tags. Update this when you deploy the site.
+    SITE_URL: "https://bestmuscat.com/",
+    // When you update the banner images, bump this number to bust the cache on clients.
+    ASSET_VERSION: "1"
+  };
 
-/* global window, document */
-
-// In-memory cache of places loaded from data/places.json.
-let PLACES_CACHE = null;
-
-// Selected category for filtering. Null means show all.
-let selectedCategory = null;
-
-/**
- * Fetch the canonical list of places. The result is cached.
- * @returns {Promise<Array>} A promise that resolves to an array of place objects.
- */
-async function loadPlaces() {
-  if (Array.isArray(PLACES_CACHE)) {
-    return PLACES_CACHE;
+  // ---------- CATEGORY DEFINITIONS ----------
+  // The Best Muscat directory focuses on six core categories. Each entry must include
+  // exactly one of these categories. Chips on the homepage reflect these values.
+  const CATEGORIES = [
+    { name: "Hotels",      slug: "hotels" },
+    { name: "Restaurants", slug: "restaurants" },
+    { name: "Schools",     slug: "schools" },
+    { name: "Spas",        slug: "spas" },
+    { name: "Clinics",     slug: "clinics" },
+    { name: "Malls",       slug: "malls" }
+  ];
+  const CATEGORY_SLUG_SET = new Set(CATEGORIES.map(c => c.slug));
+  // ---------- SEO HELPERS (paste START) ----------
+  function setMeta(name, content) {
+    if (!content) return;
+    let el = document.querySelector(`meta[name="${name}"]`);
+    if (!el) { el = document.createElement("meta"); el.setAttribute("name", name); document.head.appendChild(el); }
+    el.setAttribute("content", content);
   }
-  const res = await fetch('data/places.json');
-  const data = await res.json();
-  PLACES_CACHE = data;
-  return data;
-}
-window.loadPlaces = loadPlaces;
-
-/**
- * Fetch the list of categories defined in data/categories.json.
- * @returns {Promise<object>} A promise that resolves to a mapping of category names to metadata.
- */
-async function loadCategories() {
-  const res = await fetch('data/categories.json');
-  return await res.json();
-}
-window.loadCategories = loadCategories;
-
-/**
- * Populate the category chips bar from categories.json.
- * Adds click handlers that set the selectedCategory and re-render the list.
- */
-async function populateCategories() {
-  const container = document.getElementById('categories-container');
-  if (!container) return;
-  const categories = await loadCategories();
-  const fragments = [];
-  Object.keys(categories).forEach(cat => {
-    fragments.push(`<button class="chip" data-category="${cat}">${cat}</button>`);
-  });
-  container.innerHTML = fragments.join('');
-  // Click handler using event delegation
-  container.addEventListener('click', ev => {
-    const target = ev.target;
-    if (target && target.matches('.chip')) {
-      const cat = target.getAttribute('data-category');
-      // If clicking the same active chip, clear selection
-      if (selectedCategory === cat) {
-        selectedCategory = null;
-      } else {
-        selectedCategory = cat;
-      }
-      // Update active state
-      container.querySelectorAll('.chip').forEach(el => {
-        el.classList.toggle('active', el.getAttribute('data-category') === selectedCategory);
-      });
-      renderList();
-    }
-  });
-  // Set active state if a category is pre-selected
-  container.querySelectorAll('.chip').forEach(el => {
-    el.classList.toggle('active', el.getAttribute('data-category') === selectedCategory);
-  });
-}
-window.populateCategories = populateCategories;
-
-/**
- * Parse "HH:MM" into minutes since midnight.
- * @param {string} str
- * @returns {number}
- */
-function minutesFromTime(str) {
-  const [h, m] = String(str).split(':').map(Number);
-  return h * 60 + m;
-}
-
-/**
- * Determine whether a place is currently open based on its hours of operation.
- * Supports multiple time windows per day and overnight hours.
- * @param {object} hours An object mapping day abbreviations to arrays of [open, close] strings.
- * @param {Date} [now] Optional date instance; defaults to current time.
- * @returns {boolean}
- */
-function isOpenNow(hours, now = new Date()) {
-  if (!hours) return false;
-  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const day = days[now.getDay()];
-  const windows = hours[day] || [];
-  if (!Array.isArray(windows) || windows.length === 0) {
-    return false;
+  function setOG(property, content) {
+    if (!content) return;
+    let el = document.querySelector(`meta[property="${property}"]`);
+    if (!el) { el = document.createElement("meta"); el.setAttribute("property", property); document.head.appendChild(el); }
+    el.setAttribute("content", content);
   }
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  for (const [open, close] of windows) {
-    const openMin = minutesFromTime(open);
-    const closeMin = minutesFromTime(close);
-    if (openMin <= closeMin) {
-      if (nowMin >= openMin && nowMin <= closeMin) {
-        return true;
-      }
+  function setCanonical(url) {
+    let link = document.querySelector('link[rel="canonical"]');
+    if (!link) { link = document.createElement("link"); link.setAttribute("rel", "canonical"); document.head.appendChild(link); }
+    link.setAttribute("href", url);
+  }
+  function addJSONLD(obj) {
+    const s = document.createElement("script");
+    s.type = "application/ld+json";
+    s.text = JSON.stringify(obj);
+    document.head.appendChild(s);
+  }
+  function slugify(s) {
+    return (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  }
+  // ---------- SEO HELPERS (paste END) ----------
+
+  // ---------- STATE ----------
+  let tools = [];                 // full list
+  let visible = [];               // filtered list
+  let fuse = null;                // Fuse index
+  let selectedCategories = new Set(); // multi-select chips (by slug)
+  // Pricing filters are not used. This value remains fixed.
+  let currentPricing = "all";
+  let currentQuery = "";
+  let currentPage = 1;
+
+  // ---------- ELEMENTS ----------
+  const elSearch     = document.getElementById("search");
+  const elChips      = document.getElementById("chips");
+  // The pricing filter dropdown has been removed from the markup. Keep a null reference
+  // so that downstream code can check for its existence safely.
+  const elPricing    = document.getElementById("pricing");
+  const elSuggest    = document.getElementById("suggest-link");
+  const elCount      = document.getElementById("count");
+  const elGrid       = document.getElementById("results");
+  const elPagination = document.getElementById("pagination");
+  const elPrev       = document.getElementById("prev");
+  const elNext       = document.getElementById("next");
+  const elPage       = document.getElementById("page");
+  const elPageInfo   = document.getElementById("page-info");
+  const elShowcase   = document.getElementById("showcase");
+  const elShowMalls  = document.getElementById("showcase-malls");
+  const elShowHotels = document.getElementById("showcase-hotels");
+  const elShowRests  = document.getElementById("showcase-restaurants");
+  const elShowSchools= document.getElementById("showcase-schools");
+
+
+  // ---------- UTIL ----------
+  const qs = new URLSearchParams(location.search);
+  function setQueryParam(key, val) {
+    const url = new URL(location.href);
+    if (val === null || val === undefined || val === "" || (Array.isArray(val) && val.length === 0)) {
+      url.searchParams.delete(key);
     } else {
-      // Over midnight
-      if (nowMin >= openMin || nowMin <= closeMin) {
-        return true;
+      url.searchParams.set(key, Array.isArray(val) ? val.join(",") : String(val));
+    }
+    history.replaceState({}, "", url.toString());
+  }
+  function getArrayParam(name) {
+    const v = qs.get(name);
+    return v ? v.split(",").map(s => s.trim()).filter(Boolean) : [];
+  }
+  function debounce(fn, ms=200) {
+    let t=null;
+    return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
+  }
+  function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function initials(name) {
+    const parts=(name||"").split(/\s+/).slice(0,2);
+    return parts.map(p=>p[0]?.toUpperCase()||"").join("");
+  }
+  // Pricing badges and feature icons are unused in the Best Muscat directory.
+  // Return an empty string so that existing markup in cardHTML renders nothing.
+  function pricingBadge() { return ""; }
+  function iconRow() { return ""; }
+  
+
+  /* =======================
+   LOGO FALLBACK HELPERS
+   ======================= */
+
+// Extracts the hostname from a URL (used to fetch a site icon if the main logo fails)
+function hostnameFromUrl(u) {
+  try { return new URL(u).hostname; } catch { return ""; }
+}
+
+// Installs a robust error handler on each logo <img> to:
+// 1) try icon.horse, 2) try Google s2 favicons, 3) fall back to initials
+function installLogoErrorFallback() {
+  document.querySelectorAll('img.logo[data-domain]').forEach(img => {
+    if (img.dataset._wired) return; // avoid double-binding after re-renders
+    img.dataset._wired = "1";
+
+    img.addEventListener('error', () => {
+      const domain = img.dataset.domain;
+      // No domain? swap to initials block and exit
+      if (!domain) {
+        const name = img.getAttribute('alt')?.replace(/ logo$/i, '') || 'AI';
+        const div = document.createElement('div');
+        div.className = 'logo';
+        div.setAttribute('aria-hidden', 'true');
+        div.textContent = (name.split(/\s+/).slice(0,2).map(s=>s[0]?.toUpperCase()||'').join('')) || 'AI';
+        img.replaceWith(div);
+        return;
+      }
+
+      // 1st fallback: icon.horse
+      if (!img.dataset.triedHorse) {
+        img.dataset.triedHorse = "1";
+        img.src = `https://icon.horse/icon/${encodeURIComponent(domain)}`;
+        return;
+      }
+
+      // 2nd fallback: Google s2 favicons
+      if (!img.dataset.triedS2) {
+        img.dataset.triedS2 = "1";
+        img.src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+        return;
+      }
+
+      // Final fallback: initials
+      const name = img.getAttribute('alt')?.replace(/ logo$/i, '') || 'AI';
+      const div = document.createElement('div');
+      div.className = 'logo';
+      div.setAttribute('aria-hidden', 'true');
+      div.textContent = (name.split(/\s+/).slice(0,2).map(s=>s[0]?.toUpperCase()||'').join('')) || 'AI';
+      img.replaceWith(div);
+    }, { once: false });
+  });
+}
+
+  // ----- PAGINATION HELPERS -----
+  function getPageWindow(curr, total, width = 5) {
+    const half = Math.floor(width / 2);
+    let start = Math.max(1, curr - half);
+    let end = Math.min(total, start + width - 1);
+    start = Math.max(1, end - width + 1);
+    return { start, end };
+  }
+  function ensurePagerNumbersContainer() {
+    let el = elPagination.querySelector('.pager-numbers');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'pager-numbers';
+      // insert before Next ▶ button so layout is: Prev | numbers | Next
+      elPagination.insertBefore(el, elNext);
+    }
+    return el;
+  }
+  function renderPaginationNumbers(totalPages) {
+    const container = ensurePagerNumbersContainer();
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    const { start, end } = getPageWindow(currentPage, totalPages, 5);
+    let html = '';
+
+    // First page + leading ellipsis
+    if (start > 1) {
+      html += `<button class="page-btn" data-page="1" aria-label="Go to page 1">1</button>`;
+      if (start > 2) html += `<span class="dots" aria-hidden="true">…</span>`;
+    }
+
+    // Window pages
+    for (let p = start; p <= end; p++) {
+      const active = p === currentPage ? ' active' : '';
+      const ariaCur = p === currentPage ? ` aria-current="page"` : '';
+      html += `<button class="page-btn${active}" data-page="${p}"${ariaCur} aria-label="Go to page ${p}">${p}</button>`;
+    }
+
+    // Trailing ellipsis + last page
+    if (end < totalPages) {
+      if (end < totalPages - 1) html += `<span class="dots" aria-hidden="true">…</span>`;
+      html += `<button class="page-btn" data-page="${totalPages}" aria-label="Go to page ${totalPages}">${totalPages}</button>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  // ---------- CHIPS ----------
+  function renderChips() {
+    elChips.innerHTML = CATEGORIES.map(cat => {
+      const pressed = selectedCategories.has(cat.slug);
+      return `<button class="chip" type="button" data-slug="${esc(cat.slug)}" aria-pressed="${pressed}">${esc(cat.name)}</button>`;
+    }).join("");
+    updateChipsActive();
+  }
+
+  function updateChipsActive() {
+    elChips.querySelectorAll(".chip").forEach(btn => {
+      const slug = btn.getAttribute("data-slug");
+      const on   = selectedCategories.has(slug);
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+  // Paint a count badge on each chip (expects keys by category slug)
+  function updateChipCounts(countsBySlug) {
+    elChips.querySelectorAll(".chip").forEach(btn => {
+      const slug = btn.getAttribute("data-slug");
+      const catName = (CATEGORIES.find(c => c.slug === slug) || {}).name || slug;
+      const n = countsBySlug[slug] || 0;
+      btn.innerHTML = `${esc(catName)} <span class="chip-count">${n}</span>`;
+    });
+  }
+
+
+  // ---------- FETCH & INIT ----------
+async function init() {
+
+  // === Router: handle tool.html separately and exit early ===
+  if (/tool\.html$/i.test(location.pathname)) {
+    try {
+      // 1) read slug from URL
+      const slug = (new URLSearchParams(location.search)).get("slug") || "";
+
+      // 2) load tools.json
+      const res = await fetch("data/tools.json", { cache: "no-store" });
+      if (!res.ok) throw new Error("tools.json not found");
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("tools.json must be an array");
+
+      // 3) normalize tools (consistent with index mapping)
+      const normalized = data.map(t => ({
+        id: t.id || t.slug || Math.random().toString(36).slice(2),
+        slug: (t.slug || (t.name||"").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g,"")).slice(0,128),
+        name: t.name || "Untitled",
+        url: t.url || "#",
+        tagline: t.tagline || "",
+        description: t.description || "",
+        pricing: ["free","freemium","paid"].includes(t.pricing) ? t.pricing : "freemium",
+        categories: Array.isArray(t.categories) ? t.categories.filter(Boolean) : [],
+        tags: Array.isArray(t.tags) ? t.tags.filter(Boolean) : [],
+        logo: t.logo || "",
+        image: t.image || "",                 // optional hero image per tool
+        short_description: t.short_description || t.tagline || "",
+        price: t.price || t.pricing || ""
+      }));
+
+      // 4) find the tool by slug
+      const tool = normalized.find(t => t.slug === slug);
+      if (!tool) {
+        document.title = "Tool not found — Academia with AI";
+        setMeta("description", "This tool could not be found.");
+        setCanonical(`${CONFIG.SITE_URL}tool.html`);
+        return;
+      }
+
+      // 5) === Per-tool SEO ===
+      const siteUrl = (CONFIG.SITE_URL || (location.origin + "/")).replace(/\/$/, "/");
+      const toolUrl = `${siteUrl}tool.html?slug=${encodeURIComponent(tool.slug)}`;
+      const categoryName = (tool.categories && tool.categories[0]) || "Tools";
+
+      document.title = `${tool.name} — ${categoryName} | Academia with AI`;
+      setMeta("description", tool.short_description || `Learn about ${tool.name} for academic workflows.`);
+      setCanonical(toolUrl);
+
+      setOG("og:title", document.title);
+      setOG("og:description", tool.short_description || `Learn about ${tool.name}.`);
+      setOG("og:url", toolUrl);
+
+      setMeta("twitter:title", document.title);
+      setMeta("twitter:description", tool.short_description || `Learn about ${tool.name}.`);
+      // Optional: per-tool social image
+      if (tool.image && /^https?:/i.test(tool.image)) {
+        setOG("og:image", tool.image);
+        setMeta("twitter:image", tool.image);
+      }
+      /* === ADD THESE LINES HERE (force-update placeholders in <head>) === */
+      document.querySelector('meta[name="twitter:title"]')
+      ?.setAttribute('content', document.title);
+
+      document.querySelector('meta[name="twitter:description"]')
+      ?.setAttribute('content', tool.short_description || `Learn about ${tool.name}.`);
+
+      document.querySelector('meta[name="twitter:image"]')
+      ?.setAttribute('content',
+      (tool.image && /^https?:/i.test(tool.image))
+      ? tool.image
+      : 'https://academiawithai.com/assets/og-default.jpg'
+  );
+      /* === END ADD === */
+
+      // JSON-LD: SoftwareApplication
+      addJSONLD({
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": tool.name,
+        "url": toolUrl,
+        "operatingSystem": "Any",
+        "applicationCategory": "EducationalApplication",
+        "description": tool.short_description || undefined,
+        "offers": (tool.price && String(tool.price).toLowerCase().includes("free"))
+          ? { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+          : undefined
+      });
+
+      // JSON-LD: Breadcrumbs
+      const catSlug = slugify(categoryName);
+      addJSONLD({
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": siteUrl },
+          { "@type": "ListItem", "position": 2, "name": categoryName, "item": `${siteUrl}category/${catSlug}.html` },
+          { "@type": "ListItem", "position": 3, "name": tool.name, "item": toolUrl }
+        ]
+      });
+    } catch (e) {
+      console.warn("tool.html SEO init failed:", e);
+    }
+    return; // IMPORTANT: stop here so index-page code doesn't run on tool.html
+  }
+  // === end tool.html SEO router ===
+    // Suggest form
+    elSuggest.href = CONFIG.GOOGLE_FORM_URL || "#";
+
+    // Preselect chips from URL
+    const startSelected = getArrayParam("category").filter(slug=>CATEGORY_SLUG_SET.has(slug));
+    startSelected.forEach(s=>selectedCategories.add(s));
+    renderChips();
+
+    // Single delegated listener for all chips (works across re-renders)
+    elChips.addEventListener("click", (e) => {
+      const btn = e.target.closest(".chip");
+      if (!btn || !elChips.contains(btn)) return;
+      const slug = btn.getAttribute("data-slug");
+      if (!CATEGORY_SLUG_SET.has(slug)) return;
+
+      if (selectedCategories.has(slug)) selectedCategories.delete(slug);
+      else selectedCategories.add(slug);
+
+      currentPage = 1;
+      setQueryParam("category", Array.from(selectedCategories));
+      updateChipsActive();
+      applyFilters();
+    });
+
+    // Pricing filters are disabled in this directory. Ignore any pricing query param.
+
+    // Search from URL
+    const q = qs.get("q") || "";
+    currentQuery = q;
+    elSearch.value = q;
+
+    // Page from URL
+    const pageParam = parseInt(qs.get("page") || "1", 10);
+    currentPage = Number.isFinite(pageParam) && pageParam>0 ? pageParam : 1;
+
+    // Load tools
+    let data = [];
+    try {
+      const res = await fetch("data/tools.json", { cache: "no-store" });
+      if (!res.ok) throw new Error("tools.json not found");
+      data = await res.json();
+      if (!Array.isArray(data)) throw new Error("tools.json must be an array");
+    } catch (err) {
+      console.warn(err);
+      elGrid.innerHTML = `<div class="empty">Could not load <code>data/tools.json</code>. Create the file with your tools to see results here.<br/>Schema example is documented in <code>assets/app.js</code>.</div>`;
+      elCount.textContent = "";
+      elPagination.hidden = true;
+      return;
+    }
+
+    tools = data.map(t => ({
+  id: t.id || t.slug || Math.random().toString(36).slice(2),
+  slug: (t.slug || (t.name||"").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g,"")).slice(0,128),
+  name: t.name || "Untitled",
+  url: t.url || "#",
+  tagline: t.tagline || "",
+  description: t.description || "",
+  pricing: ["free","freemium","paid"].includes(t.pricing) ? t.pricing : "freemium",
+  categories: Array.isArray(t.categories) ? t.categories.filter(Boolean) : [],
+  tags: Array.isArray(t.tags) ? t.tags.filter(Boolean) : [],
+  logo: t.logo || "",
+  image: t.image || t.hero || t.photo || t.logo || "",   // NEW: prefer real photo, fallback to logo
+  evidence_cites: Boolean(t.evidence_cites),
+  local_onprem: Boolean(t.local_onprem),
+  edu_discount: Boolean(t.edu_discount),
+  free_tier: "free"===t.pricing || Boolean(t.free_tier),
+  beta: Boolean(t.beta),
+  created_at: t.created_at || new Date().toISOString().slice(0,10)
+}));
+
+  // Render the 3 showcase rows (first 6 items per category)
+function renderShowcases() {
+  const pick = (slug) => tools
+    .filter(t => (t.categories || []).some(c => slugify(c) === slug || c === slug))
+    .slice(0, 6);
+
+  const renderInto = (el, items) => { if (el) el.innerHTML = items.map(cardHTML).join(""); };
+
+  renderInto(elShowMalls,   pick('malls'));
+  renderInto(elShowHotels,  pick('hotels'));
+  renderInto(elShowRests,   pick('restaurants'));
+  renderInto(elShowSchools, pick('schools'));
+}
+renderShowcases();
+
+
+    // Fuse index
+    fuse = new Fuse(tools, {
+      includeScore: true,
+      threshold: 0.35,
+      ignoreLocation: true,
+      keys: ["name", "tagline", "description", "tags"]
+    });
+
+    // Wire inputs
+    elSearch.addEventListener("input", debounce((e)=>{
+      currentQuery = e.target.value.trim();
+      currentPage = 1;
+      setQueryParam("q", currentQuery || null);
+      applyFilters();
+    }, 180));
+
+    // No pricing filter dropdown, so no listener is required.
+
+    elPrev.addEventListener("click", ()=>{
+      if (currentPage>1){ currentPage--; setQueryParam("page", currentPage); render(); }
+    });
+    elNext.addEventListener("click", ()=>{
+      const totalPages = Math.max(1, Math.ceil(visible.length / CONFIG.ITEMS_PER_PAGE));
+      if (currentPage<totalPages){ currentPage++; setQueryParam("page", currentPage); render(); }
+    });
+
+    // Click any numbered page (event delegation)
+    elPagination.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-page]');
+      if (!btn || !elPagination.contains(btn)) return;
+      const p = parseInt(btn.dataset.page, 10);
+      if (!Number.isFinite(p) || p === currentPage) return;
+      currentPage = p;
+      setQueryParam('page', currentPage);
+      render();
+    });
+        // Clear filters button (auto-create if missing)
+    let elClear = document.getElementById('clear-filters');
+    if (!elClear) {
+      elClear = document.createElement('button');
+      elClear.id = 'clear-filters';
+      elClear.type = 'button';
+      elClear.className = 'chip';
+      elClear.title = 'Reset search, pricing, and categories';
+      elClear.textContent = 'Clear filters';
+      // place right after the chips row
+      if (elChips && elChips.parentNode) {
+        elChips.parentNode.insertBefore(elClear, elChips.nextSibling);
+      } else {
+        // fallback: append somewhere visible
+        document.body.appendChild(elClear);
       }
     }
+    elClear.addEventListener('click', () => {
+      // reset state
+      selectedCategories.clear();
+      currentQuery = '';
+      currentPage = 1;
+
+      // reset UI controls
+      elSearch.value = '';
+      setQueryParam('category', null);
+      setQueryParam('q', null);
+      setQueryParam('page', 1);
+
+      updateChipsActive();
+      applyFilters();
+    });
+
+
+    applyFilters(true);
   }
-  return false;
+
+  // ---------- FILTERING ----------
+  // ---------- FILTERING ----------
+  function applyFilters(first=false) {
+    const catFilter = Array.from(selectedCategories);
+    let arr = tools.slice();
+
+    // 1) Apply category filter (multi-select)
+    if (catFilter.length > 0) {
+      arr = arr.filter(t =>
+        t.categories.some(c => catFilter.includes(slugify(c)) || catFilter.includes(c))
+      );
+    }
+
+    // 2) Apply search filter (Fuse) to the working set
+    if (currentQuery) {
+      const results = fuse.search(currentQuery);
+      arr = results.map(r => r.item);
+    }
+
+    // --- CATEGORY COUNTS ---
+    // Build a pool that only considers the current search. Used for badge counts on category chips.
+    let pool = tools.slice();
+    if (currentQuery) {
+      const poolResults = new Set(fuse.search(currentQuery).map(r => r.item));
+      pool = pool.filter(t => poolResults.has(t));
+    }
+    const countsBySlug = {};
+    for (const t of pool) {
+      for (const c of (t.categories || [])) {
+        const slug = CATEGORY_SLUG_SET.has(c) ? c : slugify(c);
+        countsBySlug[slug] = (countsBySlug[slug] || 0) + 1;
+      }
+    }
+    updateChipCounts(countsBySlug);
+    // Toggle home sections (showcase + topics) vs. listing grid
+const isHome = (selectedCategories.size === 0) && !currentQuery;
+
+if (elShowcase) elShowcase.style.display = isHome ? "" : "none";
+
+const elVisit = document.getElementById('visit-muscat');
+if (elVisit) elVisit.style.display = isHome ? "" : "none";
+
+// Grid/pagination/count/meta should only show on filtered/search views
+if (elGrid)       elGrid.style.display       = isHome ? "none" : "";
+if (elPagination) elPagination.style.display = isHome ? "none" : "";
+if (elCount)      elCount.style.display      = isHome ? "none" : "";
+
+// The "page-info" lives inside a toolbar row; hide that row if empty
+if (elPageInfo && elPageInfo.parentElement) {
+  elPageInfo.parentElement.style.display = isHome ? "none" : "";
 }
 
-/**
- * Convert hours object into a human friendly string for today's hours.
- * Returns "Closed" if there are no hours defined.
- * @param {object} hours
- * @returns {string}
- */
-function todayHoursString(hours) {
-  if (!hours) return 'Closed';
-  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const day = days[new Date().getDay()];
-  const windows = hours[day] || [];
-  if (windows.length === 0) return 'Closed';
-  return windows.map(([o, c]) => `${o}–${c}`).join(', ');
-}
 
-/**
- * Render an individual listing card for a place.
- * @param {object} place
- * @param {boolean} compact If true, renders a compact card.
- * @returns {string} HTML string for the card.
- */
-function renderCard(place, compact = false) {
-  const open = isOpenNow(place.hours);
-  const price = place.price_range?.symbol || '';
-  const cuisine = (place.cuisines && place.cuisines.length > 0) ? place.cuisines[0] : '';
-  const badgesHtml = (place.badges || []).map(b => `<span class="badge">${b}</span>`).join('');
-  const rating = typeof place.rating_overall === 'number' ? place.rating_overall.toFixed(1) : '';
-  const subscoresHtml = place.subscores ? Object.entries(place.subscores)
-    .map(([k, v]) => `<div class="subscore"><span class="subscore-name">${k}</span> <span class="subscore-value">${parseFloat(v).toFixed(1)}</span></div>`)
-    .join('') : '';
+    // --- END CATEGORY COUNTS ---
+
+    visible = arr;
+    if (first) injectItemListJSONLD();
+    render();
+  }
+
+
+  // ---------- RENDER ----------
+  function render() {
+    const total = visible.length;
+    elCount.textContent = total ? `${total} tool${total===1?"":"s"} found` : "No matching tools found.";
+    elPageInfo.textContent = `Showing ${Math.min(total, ((currentPage-1)*CONFIG.ITEMS_PER_PAGE)+1)}–${Math.min(total, currentPage*CONFIG.ITEMS_PER_PAGE)} of ${total}`;
+
+    const totalPages = Math.max(1, Math.ceil(total / CONFIG.ITEMS_PER_PAGE));
+    currentPage = Math.min(currentPage, totalPages);
+    elPrev.disabled = currentPage<=1;
+    elNext.disabled = currentPage>=totalPages;
+    elPage.textContent = `Page ${currentPage} of ${totalPages}`;
+    elPagination.hidden = total<=CONFIG.ITEMS_PER_PAGE;
+
+    // Numbered pagination (sliding window)
+    renderPaginationNumbers(totalPages);
+
+    const start = (currentPage-1) * CONFIG.ITEMS_PER_PAGE;
+    const pageItems = visible.slice(start, start + CONFIG.ITEMS_PER_PAGE);
+
+    elGrid.innerHTML = pageItems.map(cardHTML).join("");
+    // hook up image error fallbacks *after* the DOM is in place
+    installLogoErrorFallback();
+
+    const og = document.getElementById("og-url");
+    if (og) og.setAttribute("content", CONFIG.SITE_URL);
+
+    updateItemListJSONLD(pageItems.slice(0,10));
+  }
+
+  function cardHTML(t) {
+  const detailUrl  = `tool.html?slug=${encodeURIComponent(t.slug)}`;
+  const websiteUrl = t.url ? esc(t.url) : "";
+  const imgSrc     = t.image || "";
+  const title      = esc(t.name);
+  const subtitle   = esc(t.tagline || t.description.slice(0, 120) || "");
+
+  const cats = (t.categories || []).slice(0,2).map(c=>`<span class="badge">${esc(c)}</span>`).join(" ");
+  const tagChips = (t.tags || []).slice(0,5).map(c=>`<span class="tag">${esc(c)}</span>`).join(" ");
+
+  const websiteBtn = websiteUrl
+    ? `<div class="cta"><a href="${websiteUrl}" aria-label="Visit ${title} website" target="_blank" rel="noopener">Website ↗</a></div>`
+    : "";
+
+  // Full-bleed image on top; if missing, show initials placeholder
+  const topImage = imgSrc
+    ? `
+      <a href="${detailUrl}" class="card-img" aria-label="${title} details">
+        <img src="${esc(imgSrc)}" alt="${title}" loading="lazy" decoding="async"
+             onerror="this.closest('.card-img').classList.add('img-fallback'); this.remove();" />
+      </a>`
+    : `
+      <a href="${detailUrl}" class="card-img img-fallback" aria-label="${title} details">
+        <div class="img-placeholder">${esc((t.name||'').split(/\s+/).slice(0,2).map(s=>s[0]?.toUpperCase()||'').join('')||'BM')}</div>
+      </a>`;
+
   return `
-    <a class="card${compact ? ' compact' : ''}" href="tool.html?slug=${encodeURIComponent(place.slug)}">
-      <div class="card-header">
-        <h3>${place.name}</h3>
-        <div class="badges">${badgesHtml}</div>
+    <article class="card card--place">
+      ${topImage}
+      <div class="card-body">
+        <h2 class="card-title"><a href="${detailUrl}" title="${title}" class="card-link">${title}</a></h2>
+        <p class="card-sub">${subtitle}</p>
+        <div class="badges">${cats}</div>
+        <div class="tags">${tagChips}</div>
+        ${websiteBtn}
       </div>
-      <div class="card-meta">
-        ${rating ? `<span class="rating">${rating}</span>` : ''}
-        <span class="status ${open ? 'open' : 'closed'}">${open ? 'Open' : 'Closed'}</span>
-        ${price ? `<span class="price">${price}</span>` : ''}
-        ${cuisine ? `<span class="cuisine">${cuisine}</span>` : ''}
-      </div>
-      <div class="subscores">${subscoresHtml}</div>
-    </a>
+    </article>
   `;
 }
 
-/**
- * Render the listing of places into the page.
- * Applies search, filter and sort options selected by the user.
- */
-async function renderList() {
-  const container = document.getElementById('place-list');
-  if (!container) return;
-  const places = await loadPlaces();
-  // Build filter state
-  let results = [...places];
-  // Category filter
-  if (selectedCategory) {
-    results = results.filter(p => Array.isArray(p.categories) && p.categories.includes(selectedCategory));
-  }
 
-  // Search filter
-  const searchInput = document.getElementById('search-input');
-  const query = searchInput && searchInput.value.trim().toLowerCase();
-  if (query) {
-    results = results.filter(p =>
-      p.name.toLowerCase().includes(query) ||
-      (p.cuisines && p.cuisines.some(c => c.toLowerCase().includes(query))) ||
-      (p.location?.neighborhood && p.location.neighborhood.toLowerCase().includes(query))
-    );
-  }
 
-  // Awards filter
-  const awardCheckboxes = document.querySelectorAll('#filter-awards input[type="checkbox"]:checked');
-  const selectedAwards = Array.from(awardCheckboxes).map(cb => cb.value);
-  if (selectedAwards.length > 0) {
-    results = results.filter(p => Array.isArray(p.badges) && selectedAwards.every(a => p.badges.includes(a)));
-  }
 
-  // Price filter
-  const priceCheckboxes = document.querySelectorAll('#filter-price input[type="checkbox"]:checked');
-  const selectedPrices = Array.from(priceCheckboxes).map(cb => cb.value);
-  if (selectedPrices.length > 0) {
-    results = results.filter(p => p.price_range && selectedPrices.includes(p.price_range.symbol));
-  }
-
-  // Cuisines filter
-  const cuisineCheckboxes = document.querySelectorAll('#filter-cuisines input[type="checkbox"]:checked');
-  const selectedCuisines = Array.from(cuisineCheckboxes).map(cb => cb.value);
-  if (selectedCuisines.length > 0) {
-    results = results.filter(p => Array.isArray(p.cuisines) && p.cuisines.some(c => selectedCuisines.includes(c)));
-  }
-
-  // Neighborhood filter
-  const neighborhoodCheckboxes = document.querySelectorAll('#filter-neighborhoods input[type="checkbox"]:checked');
-  const selectedNeighborhoods = Array.from(neighborhoodCheckboxes).map(cb => cb.value);
-  if (selectedNeighborhoods.length > 0) {
-    results = results.filter(p => p.location && selectedNeighborhoods.includes(p.location.neighborhood));
-  }
-
-  // Sort
-  const sortSelect = document.getElementById('sort-select');
-  const sort = sortSelect ? sortSelect.value : 'featured';
-  if (sort === 'rating') {
-    results.sort((a, b) => (b.rating_overall || 0) - (a.rating_overall || 0));
-  }
-
-  // Compact view
-  const compact = document.getElementById('compact-view')?.checked;
-
-  container.innerHTML = results.map(p => renderCard(p, compact)).join('');
-}
-
-/**
- * Populate dynamic filter options (cuisines and neighborhoods).
- */
-async function populateFilterOptions() {
-  const places = await loadPlaces();
-  // Collect unique cuisines and neighborhoods
-  const cuisines = new Set();
-  const neighborhoods = new Set();
-  places.forEach(p => {
-    (p.cuisines || []).forEach(c => cuisines.add(c));
-    if (p.location?.neighborhood) {
-      neighborhoods.add(p.location.neighborhood);
-    }
-  });
-
-  const cuisinesContainer = document.getElementById('filter-cuisines');
-  cuisines.forEach(c => {
-    const label = document.createElement('label');
-    label.innerHTML = `<input type="checkbox" value="${c}"> ${c}`;
-    cuisinesContainer?.appendChild(label);
-  });
-
-  const neighborhoodsContainer = document.getElementById('filter-neighborhoods');
-  neighborhoods.forEach(n => {
-    const label = document.createElement('label');
-    label.innerHTML = `<input type="checkbox" value="${n}"> ${n}`;
-    neighborhoodsContainer?.appendChild(label);
-  });
-}
-
-/**
- * Initialise event listeners for the index page.
- */
-function initIndexPage() {
-  const searchInput = document.getElementById('search-input');
-  const filterToggle = document.getElementById('filter-toggle');
-  const applyFiltersButton = document.getElementById('apply-filters');
-  const sortSelect = document.getElementById('sort-select');
-  const compactView = document.getElementById('compact-view');
-
-  if (searchInput) {
-    searchInput.addEventListener('input', () => renderList());
-  }
-  if (filterToggle) {
-    filterToggle.addEventListener('click', () => {
-      const drawer = document.getElementById('filter-drawer');
-      drawer?.classList.toggle('open');
-    });
-  }
-  if (applyFiltersButton) {
-    applyFiltersButton.addEventListener('click', () => {
-      const drawer = document.getElementById('filter-drawer');
-      drawer?.classList.remove('open');
-      renderList();
-    });
-  }
-  if (sortSelect) {
-    sortSelect.addEventListener('change', () => renderList());
-  }
-  if (compactView) {
-    compactView.addEventListener('change', () => renderList());
-  }
-
-  populateFilterOptions().then(() => {
-    // Populate category chips before first render
-    populateCategories().then(() => {
-      renderList();
-    });
-  });
-}
-
-/**
- * Render a detail page for a single place.
- * Populates all the sections and inserts JSON-LD into the head.
- * @param {object} place
- */
-function renderPlaceDetail(place) {
-  // Basic fields
-  const nameEl = document.getElementById('place-name');
-  if (nameEl) nameEl.textContent = place.name;
-  const badgeContainer = document.getElementById('place-badges');
-  if (badgeContainer) {
-    badgeContainer.innerHTML = (place.badges || []).map(b => `<span class="badge">${b}</span>`).join('');
-  }
-  const ratingEl = document.getElementById('place-rating');
-  if (ratingEl) ratingEl.textContent = typeof place.rating_overall === 'number' ? `Rating ${place.rating_overall.toFixed(1)}` : '';
-  const statusEl = document.getElementById('place-status');
-  if (statusEl) statusEl.textContent = isOpenNow(place.hours) ? 'Open now' : 'Closed';
-
-  // About and verified note
-  const aboutTextEl = document.getElementById('about-text');
-  if (aboutTextEl) aboutTextEl.textContent = place.about || '';
-  const verifiedNote = document.getElementById('verified-note');
-  if (verifiedNote) {
-    if (place.verified) {
-      verifiedNote.textContent = place.methodology_note || 'Verified listing';
-    } else {
-      verifiedNote.textContent = '';
+  // ---------- JSON-LD ----------
+  function injectItemListJSONLD() {
+    let el = document.getElementById("jsonld-list");
+    if (!el) {
+      el = document.createElement("script");
+      el.type = "application/ld+json";
+      el.id = "jsonld-list";
+      document.head.appendChild(el);
     }
   }
-
-  // Best times
-  const bestTimesDiv = document.getElementById('best-times-list');
-  if (bestTimesDiv) {
-    bestTimesDiv.innerHTML = (place.best_times || []).map(bt =>
-      `<div class="best-time"><strong>${bt.label}:</strong> ${bt.window}</div>`
-    ).join('');
-  }
-
-  // Public sentiment
-  const psDiv = document.getElementById('public-sentiment-content');
-  if (psDiv) {
-    if (place.public_sentiment) {
-      psDiv.innerHTML = `
-      <p>${place.public_sentiment.summary || ''}</p>
-      <p><em>Based on ${place.public_sentiment.count || 0} reviews (${place.public_sentiment.last_updated || ''})</em></p>
-    `;
-    } else {
-      psDiv.innerHTML = '';
-    }
-  }
-
-  // Dishes
-  const dishesList = document.getElementById('dishes-list');
-  if (dishesList) {
-    dishesList.innerHTML = (place.dishes || []).map(d => `<li>${d}</li>`).join('');
-  }
-
-  // Amenities
-  const amenitiesList = document.getElementById('amenities-list');
-  if (amenitiesList) {
-    amenitiesList.innerHTML = (place.amenities || []).map(a => `<li>${a}</li>`).join('');
-  }
-
-  // Hours
-  const hoursTable = document.getElementById('hours-table');
-  if (hoursTable) {
-    const rows = [];
-    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    days.forEach(d => {
-      const windows = place.hours?.[d] || [];
-      const hoursString = windows.length > 0 ? windows.map(([o, c]) => `${o}–${c}`).join(', ') : 'Closed';
-      rows.push(`<tr><th>${d}</th><td>${hoursString}</td></tr>`);
-    });
-    hoursTable.innerHTML = rows.join('');
-  }
-
-  // Gallery
-  const galleryDiv = document.getElementById('gallery-list');
-  if (galleryDiv) {
-    galleryDiv.innerHTML = (place.gallery || []).map(src => `<img src="${src}" alt="">`).join('');
-  }
-
-  // FAQs
-  const faqsDiv = document.getElementById('faqs-list');
-  if (faqsDiv) {
-    faqsDiv.innerHTML = (place.faqs || []).map(f => `<div class="faq"><strong>${f.q}</strong><p>${f.a}</p></div>`).join('');
-  }
-
-  // Location
-  const addressLine = document.getElementById('address-line');
-  if (addressLine) addressLine.textContent = place.location?.address || '';
-  const mapsLink = document.getElementById('maps-link');
-  if (mapsLink) {
-    mapsLink.href = place.actions?.maps_url || '#';
-  }
-
-  // Inject JSON‑LD
-  injectJsonLd(place);
-}
-window.renderPlaceDetail = renderPlaceDetail;
-
-/**
- * Generate and insert schema.org JSON-LD for a place.
- * Uses the LocalBusiness subtype based on the category and adds FAQPage when applicable.
- * @param {object} place
- */
-function injectJsonLd(place) {
-  const category = Array.isArray(place.categories) ? place.categories[0] : 'LocalBusiness';
-  let type = 'LocalBusiness';
-  switch (category) {
-    case 'Restaurants': type = 'Restaurant'; break;
-    case 'Hotels': type = 'Hotel'; break;
-    case 'Schools': type = 'School'; break;
-    case 'Malls': type = 'ShoppingMall'; break;
-    case 'Spas': type = 'HealthAndBeautyBusiness'; break;
-    case 'Clinics': type = 'MedicalClinic'; break;
-    // default: LocalBusiness
-  }
-  const json = {
-    '@context': 'https://schema.org',
-    '@type': type,
-    'name': place.name,
-    'image': place.gallery && place.gallery.length > 0 ? place.gallery[0] : undefined,
-    'url': window.location.href,
-    'telephone': place.actions?.phone,
-    'priceRange': place.price_range?.symbol,
-    'servesCuisine': place.cuisines,
-    'address': place.location?.address ? {
-      '@type': 'PostalAddress',
-      'streetAddress': place.location.address,
-      'addressLocality': place.location.neighborhood || '',
-      'addressRegion': 'Muscat',
-      'addressCountry': 'OM'
-    } : undefined,
-    'geo': (place.location?.lat && place.location?.lng) ? {
-      '@type': 'GeoCoordinates',
-      'latitude': place.location.lat,
-      'longitude': place.location.lng
-    } : undefined,
-    'openingHoursSpecification': (place.hours) ? Object.entries(place.hours).map(([day, windows]) => windows.map(([o, c]) => ({
-      '@type': 'OpeningHoursSpecification',
-      'dayOfWeek': day,
-      'opens': o,
-      'closes': c
-    }))).flat() : undefined,
-    'aggregateRating': (typeof place.rating_overall === 'number' && place.public_sentiment) ? {
-      '@type': 'AggregateRating',
-      'ratingValue': place.rating_overall.toFixed(1),
-      'reviewCount': place.public_sentiment.count
-    } : undefined
-  };
-  // Remove undefined values
-  Object.keys(json).forEach(key => json[key] === undefined && delete json[key]);
-  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-  scripts.forEach(s => s.remove());
-  const scriptEl = document.createElement('script');
-  scriptEl.type = 'application/ld+json';
-  scriptEl.textContent = JSON.stringify(json, null, 2);
-  document.head.appendChild(scriptEl);
-
-  // FAQPage JSON-LD if faqs exist
-  if (place.faqs && place.faqs.length > 0) {
-    const faqJson = {
-      '@context': 'https://schema.org',
-      '@type': 'FAQPage',
-      'mainEntity': place.faqs.map(f => ({
-        '@type': 'Question',
-        'name': f.q,
-        'acceptedAnswer': {
-          '@type': 'Answer',
-          'text': f.a
-        }
+  function updateItemListJSONLD(items) {
+    const el = document.getElementById("jsonld-list");
+    if (!el) return;
+    const obj = {
+      "@context":"https://schema.org",
+      "@type":"ItemList",
+      "itemListElement": items.map((t, i) => ({
+        "@type":"ListItem",
+        "position": i+1,
+        "url": (CONFIG.SITE_URL || location.origin+location.pathname).replace(/\/$/, '/') + `tool.html?slug=${encodeURIComponent(t.slug)}`
       }))
     };
-    const faqScript = document.createElement('script');
-    faqScript.type = 'application/ld+json';
-    faqScript.textContent = JSON.stringify(faqJson, null, 2);
-    document.head.appendChild(faqScript);
+    el.textContent = JSON.stringify(obj);
   }
+
+  // ---------- START ----------
+  if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
 }
 
-// Initialise the index page when DOM content is ready
-document.addEventListener('DOMContentLoaded', () => {
-  // Determine if we are on the index page or not
-  if (document.getElementById('place-list')) {
-    initIndexPage();
-  }
-});
+})();

@@ -1,27 +1,16 @@
-#!/usr/bin/env python3
-"""
-build_search_index.py
-
-Generate a client-side search index from places.json.
-
-For example, this script could build a Fuse.js index and write it to
-data/search-index.json. This stub simply writes an empty object.
-"""
-import json
-import os
-
-
-def main() -> None:
-    data_path = "data/places.json"
-    index_path = "data/search-index.json"
-    if not os.path.exists(data_path):
-        print(f"No data file found at {data_path}.")
-        return
-    # TODO: implement actual search index generation.
-    with open(index_path, "w", encoding="utf-8") as f:
-        json.dump({}, f)
-    print(f"Wrote empty search index to {index_path}.")
-
-
-if __name__ == "__main__":
-    main()
+# Simple search index builder (basic subset for Fuse-like fields)
+import json, hashlib
+places = json.load(open("data/places.json"))
+index = []
+for p in places:
+    index.append({
+        "slug": p["slug"],
+        "name": p["name"],
+        "categories": p.get("categories", []),
+        "neighborhood": (p.get("location") or {}).get("neighborhood"),
+        "badges": p.get("badges", []),
+        "cuisines": p.get("cuisines", []),
+        "rating": p.get("rating_overall", 0)
+    })
+open("data/search-index.json","w").write(json.dumps(index, indent=2))
+print("Wrote data/search-index.json")
