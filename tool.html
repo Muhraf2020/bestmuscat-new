@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Place detail</title>
+  <link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+  <header class="detail-header">
+    <a class="back-link" href="index.html">← Back to list</a>
+    <h1 id="place-name"></h1>
+    <div id="place-badges" class="badges"></div>
+    <div id="place-rating" class="rating"></div>
+    <div id="place-status" class="status"></div>
+  </header>
+
+  <nav id="detail-nav" class="detail-nav">
+    <a href="#about">About</a>
+    <a href="#best-times">Best Times</a>
+    <a href="#public-sentiment">Public Sentiment</a>
+    <a href="#dishes">Dishes</a>
+    <a href="#amenities">Amenities</a>
+    <a href="#hours">Hours</a>
+    <a href="#gallery">Gallery</a>
+    <a href="#faqs">FAQs</a>
+  </nav>
+
+  <section id="about" class="detail-section">
+    <h2>About</h2>
+    <p id="about-text"></p>
+    <div id="verified-note" class="verified-note"></div>
+  </section>
+
+  <section id="best-times" class="detail-section">
+    <h2>Best Times</h2>
+    <div id="best-times-list"></div>
+  </section>
+
+  <section id="public-sentiment" class="detail-section">
+    <h2>Public Review Sentiment</h2>
+    <div id="public-sentiment-content"></div>
+  </section>
+
+  <section id="dishes" class="detail-section">
+    <h2>Dishes</h2>
+    <ul id="dishes-list"></ul>
+  </section>
+
+  <section id="amenities" class="detail-section">
+    <h2>Amenities</h2>
+    <ul id="amenities-list"></ul>
+  </section>
+
+  <section id="hours" class="detail-section">
+    <h2>Opening Hours</h2>
+    <table id="hours-table"></table>
+  </section>
+
+  <section id="gallery" class="detail-section">
+    <h2>Gallery</h2>
+    <div id="gallery-list" class="gallery-list"></div>
+  </section>
+
+  <section id="faqs" class="detail-section">
+    <h2>FAQs</h2>
+    <div id="faqs-list"></div>
+  </section>
+
+  <section id="location" class="detail-section">
+    <h2>Location</h2>
+    <p id="address-line"></p>
+    <p><a id="maps-link" href="#" target="_blank">View on map</a></p>
+  </section>
+
+  <script src="./assets/app.js"></script>
+  <script>
+    // On page load, fetch the data and render the detail page.
+    (async function () {
+      const params = new URLSearchParams(window.location.search);
+      const slug = params.get('slug');
+      const places = await window.loadPlaces();
+      const place = places.find(p => p.slug === slug);
+      if (!place) {
+        document.body.innerHTML = '<p>Place not found.</p>';
+        return;
+      }
+      window.renderPlaceDetail(place);
+    })();
+  </script>
+</body>
+</html>

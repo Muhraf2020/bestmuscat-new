@@ -1,0 +1,67 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "slug": "sample-place",
+    "name": "Sample Place",
+    "categories": ["Restaurants"],
+    "subcategories": ["Fine Dining"],
+    "badges": ["Gem"],
+    "price_range": { "symbol": "$$$", "min": 10, "max": 200, "currency": "OMR" },
+    "cuisines": ["Omani", "Seafood"],
+    "meals": ["Breakfast", "Lunch", "Dinner"],
+    "dishes": ["Shuwa", "Kingfish"],
+    "amenities": ["Wheelchair accessible", "Valet parking"],
+    "attributes": { "vegetarian": true, "vegan": true, "halal": true },
+    "rating_overall": 9.1,
+    "subscores": {
+      "Food Quality": 9.0,
+      "Service": 9.2,
+      "Ambience": 9.3,
+      "Value for Money": 8.6,
+      "Accessibility & Amenities": 8.9
+    },
+    "hours": {
+      "Mon": [["09:00","23:00"]],
+      "Tue": [["09:00","23:00"]],
+      "Wed": [["09:00","23:00"]],
+      "Thu": [["09:00","23:00"]],
+      "Fri": [["09:00","23:00"]],
+      "Sat": [["09:00","23:00"]],
+      "Sun": []
+    },
+    "busy_profile": null,
+    "location": {
+      "lat": 23.606,
+      "lng": 58.593,
+      "neighborhood": "Qurum",
+      "address": "Street, Area, Muscat 123",
+      "plus_code": "7JQX+3C Muscat",
+      "what3words": null
+    },
+    "landmarks": ["Royal Opera House Muscat","Qurum Beach"],
+    "actions": {
+      "website": "https://example.com",
+      "phone": "+96812345678",
+      "maps_url": "https://maps.google.com/?q=23.606,58.593",
+      "menu_url": null,
+      "booking_url": null
+    },
+    "gallery": [],
+    "about": "This is a sample place used as a template. Replace it with real data using the ingestion scripts.",
+    "best_times": [
+      { "label": "Buzzing", "window": "Fri–Sat 7–9 PM" },
+      { "label": "Relaxed", "window": "Wed 6–7 PM" }
+    ],
+    "public_sentiment": {
+      "source": "Google Reviews",
+      "count": 0,
+      "summary": "",
+      "last_updated": "2025-09-18"
+    },
+    "faqs": [],
+    "verified": false,
+    "methodology_note": "",
+    "provenance": [],
+    "last_updated": "2025-09-18"
+  }
+]

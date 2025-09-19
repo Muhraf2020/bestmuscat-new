@@ -1,0 +1,4 @@
+# Python dependencies for automation scripts.
+jsonschema>=4.19.0
+python-slugify>=8.0.1
+requests>=2.31.0

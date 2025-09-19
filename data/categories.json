@@ -1,0 +1,26 @@
+{
+  "Restaurants": {
+    "icon": "restaurant",
+    "synonyms": ["Dining", "Food"]
+  },
+  "Hotels": {
+    "icon": "hotel",
+    "synonyms": ["Lodging", "Accommodation"]
+  },
+  "Schools": {
+    "icon": "school",
+    "synonyms": ["Education"]
+  },
+  "Spas": {
+    "icon": "spa",
+    "synonyms": ["Wellness", "Beauty"]
+  },
+  "Clinics": {
+    "icon": "clinic",
+    "synonyms": ["Medical"]
+  },
+  "Malls": {
+    "icon": "mall",
+    "synonyms": ["Shopping"]
+  }
+}

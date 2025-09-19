@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Best Muscat</title>
+  <link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1 class="site-title">Best Muscat</h1>
+    <div class="search-controls">
+      <input type="text" id="search-input" placeholder="Search places…" aria-label="Search places">
+      <button id="filter-toggle" aria-label="Open filters">Filters</button>
+    </div>
+  </header>
+
+  <aside id="filter-drawer" class="filter-drawer hidden">
+    <div class="filter-content">
+      <h2>Filters</h2>
+      <div class="filter-group" id="filter-awards">
+        <h3>Awards</h3>
+        <label><input type="checkbox" value="Gem"> Gem</label>
+        <label><input type="checkbox" value="Best 100"> Best 100</label>
+        <label><input type="checkbox" value="MICHELIN 1 Star"> MICHELIN 1 Star</label>
+        <label><input type="checkbox" value="MICHELIN 2 Stars"> MICHELIN 2 Stars</label>
+        <label><input type="checkbox" value="MICHELIN 3 Stars"> MICHELIN 3 Stars</label>
+      </div>
+      <div class="filter-group" id="filter-price">
+        <h3>Price Range</h3>
+        <label><input type="checkbox" value="$"> $</label>
+        <label><input type="checkbox" value="$$"> $$</label>
+        <label><input type="checkbox" value="$$$"> $$$</label>
+        <label><input type="checkbox" value="$$$$"> $$$$</label>
+      </div>
+      <div class="filter-group" id="filter-cuisines">
+        <h3>Cuisines</h3>
+        <!-- This list is populated dynamically by app.js based on available cuisines -->
+      </div>
+      <div class="filter-group" id="filter-neighborhoods">
+        <h3>Neighborhoods</h3>
+        <!-- Populated dynamically -->
+      </div>
+      <button id="apply-filters">Apply filters</button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="sort-controls">
+      <label for="sort-select">Sort by:</label>
+      <select id="sort-select">
+        <option value="featured">Featured</option>
+        <option value="rating">Rating (High→Low)</option>
+      </select>
+      <label class="compact-toggle">
+        <input type="checkbox" id="compact-view">
+        Compact view
+      </label>
+    </div>
+    <div id="place-list" class="place-list">
+      <!-- Listing cards are injected here by app.js -->
+    </div>
+  </main>
+
+  <script src="./assets/app.js"></script>
+</body>
+</html>
