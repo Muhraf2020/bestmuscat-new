@@ -199,14 +199,54 @@
       }
 
       // Location section
-      let locationHTML = '';
-      if (tool.location) {
-        const loc = tool.location;
-        const mapEmbed = loc.map_embed ? `<div class="map-embed">${loc.map_embed}</div>` : '';
-        const websiteRow = loc.website ? `<p><a href="${esc(loc.website)}" target="_blank" rel="noopener">Website ↗</a></p>` : '';
-        const phoneRow = loc.phone ? `<p><a href="tel:${esc(loc.phone)}">Call</a></p>` : '';
-        const directionsRow = tool.actions && tool.actions.maps_url ? `<p><a href="${esc(tool.actions.maps_url)}" target="_blank" rel="noopener">Get Directions ↗</a></p>` : '';
-        locationHTML = `<section id="location" class="section"><h2>Location</h2>${mapEmbed}<p><strong>Neighbourhood:</strong> ${esc(loc.neighborhood)}</p><p><strong>Address:</strong> ${esc(loc.address)}</p>${websiteRow}${phoneRow}${directionsRow}</section>`;
+let locationHTML = '';
+if (tool.location) {
+  const loc = tool.location;
+
+  // 1) Build a query (q) for the map: prefer address → lat,lng → place name
+  const hasAddr = (loc.address || '').trim().length > 0;
+  const hasLatLng = (typeof loc.lat === 'number' && typeof loc.lng === 'number');
+
+  const q = hasAddr
+    ? encodeURIComponent(loc.address)
+    : (hasLatLng
+        ? encodeURIComponent(`${loc.lat},${loc.lng}`)
+        : encodeURIComponent(tool.name || ''));
+
+  // 2) If your data already provided a custom embed (loc.map_embed), use it.
+  //    Otherwise, create a simple Google Maps iframe.
+  const mapEmbedHTML = loc.map_embed
+    ? `<div class="map-embed">${loc.map_embed}</div>`
+    : (q
+        ? `<div class="map-embed">
+             <iframe
+               id="place-map-iframe"
+               style="width:100%;height:320px;border:0;border-radius:12px;"
+               loading="lazy"
+               referrerpolicy="no-referrer-when-downgrade"
+               src="https://www.google.com/maps?q=${q}&output=embed">
+             </iframe>
+           </div>`
+        : '');
+
+  // 3) Build helpful action links
+  const websiteRow   = loc.website ? `<p><a href="${esc(loc.website)}" target="_blank" rel="noopener">Website ↗</a></p>` : '';
+  const phoneRow     = loc.phone   ? `<p><a href="tel:${esc(loc.phone)}">Call</a></p>` : '';
+  const goHref       = (tool.actions && tool.actions.maps_url)
+                        ? tool.actions.maps_url
+                        : (q ? `https://www.google.com/maps/search/?api=1&query=${q}` : '');
+  const directionsRow = goHref ? `<p><a href="${esc(goHref)}" target="_blank" rel="noopener">Get Directions ↗</a></p>` : '';
+
+  // 4) Emit the whole section (map first, then details). If there's truly nothing to map, it still shows address/links.
+  locationHTML = `
+    <section id="location" class="section">
+      <h2>Location</h2>
+      ${mapEmbedHTML}
+      <p><strong>Neighbourhood:</strong> ${esc(loc.neighborhood || '')}</p>
+      <p><strong>Address:</strong> ${esc(loc.address || '')}</p>
+      ${websiteRow}${phoneRow}${directionsRow}
+    </section>
+  `;
       }
 
       // FAQs section
