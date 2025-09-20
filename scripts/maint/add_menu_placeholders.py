@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
 import argparse, json, sys, copy, datetime, pathlib
 
-# Resolve repo root relative to THIS file: <repo>/scripts/maint/add_menu_placeholders.py
-SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR.parents[1]  # scripts/maint -> scripts -> <repo>
-DEFAULT_FILE = REPO_ROOT / "data" / "tools.json"
-
 DEFAULT_PLACEHOLDER = {
     "menu": {
         "status": "placeholder",          # placeholder | scraped | verified
         "source": {"type": "unknown", "url": "", "captured_at": None},  # talabat|zomato|website|unknown
-        "currency": "AED",                # adjust per region
+        "currency": "AED",
         "last_updated": None,             # ISO8601
         "sections": [
             {
@@ -24,43 +19,61 @@ DEFAULT_PLACEHOLDER = {
     }
 }
 
-def ensure_menu_placeholder(obj, now_iso, debug=False):
+def is_restaurant(obj):
+    cats = obj.get("categories") or obj.get("category") or []
+    if isinstance(cats, str):
+        cats = [cats]
+    cats_norm = {str(c).strip().lower() for c in cats}
+    return "restaurants" in cats_norm
+
+def ensure_menu_placeholder(obj, now_iso, currency):
     if not isinstance(obj, dict):
-        return False
+        return False, "not an object"
 
-    categories = obj.get("categories") or obj.get("category") or []
-    if isinstance(categories, str):
-        categories = [categories]
-    categories_norm = {str(c).strip().lower() for c in categories}
+    if not is_restaurant(obj):
+        return False, "not a restaurant"
 
-    is_restaurant = "restaurants" in categories_norm
-    if debug:
-        print(f"DEBUG: slug={obj.get('slug') or obj.get('id')} cats={categories} is_restaurant={is_restaurant} has_menu={'menu' in obj}")
-
-    if not is_restaurant:
-        return False
     if "menu" in obj and isinstance(obj["menu"], dict):
-        return False
+        return False, "already has menu"
 
-    obj["menu"] = copy.deepcopy(DEFAULT_PLACEHOLDER["menu"])
-    obj["menu"]["last_updated"] = now_iso
-    return True
+    menu = copy.deepcopy(DEFAULT_PLACEHOLDER["menu"])
+    menu["currency"] = currency
+    menu["last_updated"] = now_iso
+    obj["menu"] = menu
+    return True, "added"
+
+def resolve_data_path(cli_path: str | None) -> pathlib.Path:
+    if cli_path:
+        p = pathlib.Path(cli_path)
+        if p.exists():
+            return p
+        sys.exit(f"ERROR: --file not found: {cli_path}")
+
+    # try common locations from repo root
+    candidates = [
+        pathlib.Path("data/tools.json"),
+        pathlib.Path("bestmuscat-new/data/tools.json"),
+    ]
+    for cand in candidates:
+        if cand.exists():
+            return cand
+
+    sys.exit("ERROR: Could not find tools.json. Tried:\n  " + "\n  ".join(map(str, candidates)))
 
 def main():
     ap = argparse.ArgumentParser(description="Add menu placeholders to restaurant records")
-    ap.add_argument("--file", default=str(DEFAULT_FILE), help="Path to JSON file (array of place objects)")
+    ap.add_argument("--file", help="Path to JSON file (array of place objects)")
     ap.add_argument("--write", action="store_true", help="Actually write changes")
     ap.add_argument("--currency", default="AED", help="Currency code for placeholders")
-    ap.add_argument("--debug", action="store_true", help="Print per-record classification")
     args = ap.parse_args()
 
-    p = pathlib.Path(args.file)
-    if not p.exists():
-        sys.exit(f"ERROR: File not found: {args.file}")
+    p = resolve_data_path(args.file)
 
     try:
-        with p.open("r", encoding="utf-8") as f:
-            data = json.load(f)
+        text = p.read_text(encoding="utf-8")
+        data = json.loads(text)
+    except FileNotFoundError:
+        sys.exit(f"ERROR: File not found: {p}")
     except json.JSONDecodeError as e:
         sys.exit(f"ERROR: JSON parse failed: {e}")
 
@@ -69,30 +82,45 @@ def main():
 
     now_iso = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
-    # patch currency default if user overrides
-    DEFAULT_PLACEHOLDER["menu"]["currency"] = args.currency
-
-    changed = 0
+    # walk & modify
+    total = len(data)
+    total_restaurants = 0
+    added = 0
+    skipped_has_menu = 0
+    skipped_not_restaurant = 0
     changed_ids = []
+
     for obj in data:
-        if ensure_menu_placeholder(obj, now_iso, debug=args.debug):
-            changed += 1
+        if is_restaurant(obj):
+            total_restaurants += 1
+        ok, reason = ensure_menu_placeholder(obj, now_iso, args.currency)
+        if ok:
+            added += 1
             changed_ids.append(obj.get("slug") or obj.get("id"))
+        else:
+            if reason == "already has menu":
+                skipped_has_menu += 1
+            elif reason == "not a restaurant":
+                skipped_not_restaurant += 1
+
+    # report
+    print(f"Scanned: {total} records")
+    print(f"Restaurants detected: {total_restaurants}")
+    print(f"Added placeholders: {added}")
+    print(f"Skipped (already had menu): {skipped_has_menu}")
+    print(f"Skipped (not restaurants): {skipped_not_restaurant}")
+    if changed_ids:
+        print("First few changed:", ", ".join(map(str, changed_ids[:10])))
 
     if not args.write:
-        print(f"[dry-run] Would add menu placeholders to {changed} records.")
-        if changed_ids:
-            print("First few:", ", ".join([str(x) for x in changed_ids[:10]]))
+        print("\n[dry-run] No changes written. Re-run with --write to apply.")
         return
 
-    # backup next to target
+    # backup and write
     bak = p.with_suffix(p.suffix + f".bak.{datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}")
     p.rename(bak)
-
-    with p.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    print(f"Wrote changes to {p} (backup at {bak}). Added placeholders to {changed} records.")
+    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\nWrote changes to {p} (backup at {bak}).")
 
 if __name__ == "__main__":
     main()
