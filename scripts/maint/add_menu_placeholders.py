@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import argparse, json, sys, copy, datetime, pathlib
 
+# Resolve repo root relative to THIS file: <repo>/scripts/maint/add_menu_placeholders.py
+SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[1]  # scripts/maint -> scripts -> <repo>
+DEFAULT_FILE = REPO_ROOT / "data" / "tools.json"
+
 DEFAULT_PLACEHOLDER = {
     "menu": {
         "status": "placeholder",          # placeholder | scraped | verified
@@ -19,22 +24,22 @@ DEFAULT_PLACEHOLDER = {
     }
 }
 
-def ensure_menu_placeholder(obj, now_iso):
+def ensure_menu_placeholder(obj, now_iso, debug=False):
     if not isinstance(obj, dict):
         return False
 
-    # categorize: only for Restaurants
     categories = obj.get("categories") or obj.get("category") or []
     if isinstance(categories, str):
         categories = [categories]
-    # normalize case
     categories_norm = {str(c).strip().lower() for c in categories}
 
-    if "restaurants" not in categories_norm:
-        return False
+    is_restaurant = "restaurants" in categories_norm
+    if debug:
+        print(f"DEBUG: slug={obj.get('slug') or obj.get('id')} cats={categories} is_restaurant={is_restaurant} has_menu={'menu' in obj}")
 
+    if not is_restaurant:
+        return False
     if "menu" in obj and isinstance(obj["menu"], dict):
-        # already has menu; do nothing
         return False
 
     obj["menu"] = copy.deepcopy(DEFAULT_PLACEHOLDER["menu"])
@@ -43,20 +48,21 @@ def ensure_menu_placeholder(obj, now_iso):
 
 def main():
     ap = argparse.ArgumentParser(description="Add menu placeholders to restaurant records")
-    ap.add_argument("--file", default="data/tools.json", help="Path to JSON file (array of place objects)")
+    ap.add_argument("--file", default=str(DEFAULT_FILE), help="Path to JSON file (array of place objects)")
     ap.add_argument("--write", action="store_true", help="Actually write changes")
     ap.add_argument("--currency", default="AED", help="Currency code for placeholders")
+    ap.add_argument("--debug", action="store_true", help="Print per-record classification")
     args = ap.parse_args()
 
     p = pathlib.Path(args.file)
     if not p.exists():
         sys.exit(f"ERROR: File not found: {args.file}")
 
-    with p.open("r", encoding="utf-8") as f:
-        try:
+    try:
+        with p.open("r", encoding="utf-8") as f:
             data = json.load(f)
-        except json.JSONDecodeError as e:
-            sys.exit(f"ERROR: JSON parse failed: {e}")
+    except json.JSONDecodeError as e:
+        sys.exit(f"ERROR: JSON parse failed: {e}")
 
     if not isinstance(data, list):
         sys.exit("ERROR: Expected a JSON array of place objects at top level.")
@@ -69,7 +75,7 @@ def main():
     changed = 0
     changed_ids = []
     for obj in data:
-        if ensure_menu_placeholder(obj, now_iso):
+        if ensure_menu_placeholder(obj, now_iso, debug=args.debug):
             changed += 1
             changed_ids.append(obj.get("slug") or obj.get("id"))
 
@@ -79,11 +85,10 @@ def main():
             print("First few:", ", ".join([str(x) for x in changed_ids[:10]]))
         return
 
-    # backup
+    # backup next to target
     bak = p.with_suffix(p.suffix + f".bak.{datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}")
     p.rename(bak)
 
-    # write
     with p.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
