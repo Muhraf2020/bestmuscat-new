@@ -1,51 +1,40 @@
 name: Add menu placeholders
 
 on:
-  workflow_dispatch:
-    inputs:
-      mode:
-        description: "Run mode"
-        type: choice
-        required: true
-        options: [dry-run, write]
-        default: dry-run
-      tools_path:
-        description: "Path to tools.json"
-        type: string
-        required: false
-        default: "data/tools.json"
+  workflow_dispatch:   # adds the "Run workflow" button in Actions
 
 permissions:
-  contents: write  # allow the workflow to push a commit
+  contents: write      # allow the workflow to push changes
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
+      - name: Check out repo
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Dry run script
-        if: ${{ inputs.mode == 'dry-run' }}
+      - name: Dry run (see summary)
         run: |
-          python scripts/maint/add_menu_placeholders.py --file "${{ inputs.tools_path }}"
+          python scripts/maint/add_menu_placeholders.py --file bestmuscat-new/data/tools.json || true
 
       - name: Apply changes
-        if: ${{ inputs.mode == 'write' }}
         run: |
-          python scripts/maint/add_menu_placeholders.py --file "${{ inputs.tools_path }}" --write
+          python scripts/maint/add_menu_placeholders.py --file bestmuscat-new/data/tools.json --write
 
-      - name: Commit & push if changed (write mode only)
-        if: ${{ inputs.mode == 'write' }}
-        uses: EndBug/add-and-commit@v9
-        with:
-          add: |
-            ${{ inputs.tools_path }}
-            ${{ inputs.tools_path }}.bak.*
-          message: "chore: add/refresh restaurant menu placeholders"
+      - name: Commit & push if changed
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git add bestmuscat-new/data/tools.json*
+            git commit -m "chore: add menu placeholders via GH Action"
+            git push
+          else
+            echo "No changes to commit."
+          fi
