@@ -122,13 +122,15 @@
         </div>
       `;
 
-      // Sticky sub‑navigation
+      // Sticky sub-navigation
       const navLinks = [];
       if (tool.subscores) navLinks.push('<a href="#rating">Rating</a>');
       if (tool.hours) navLinks.push('<a href="#hours">Opening Hours</a>');
+      if (tool.menu && tool.menu.sections && tool.menu.sections.length) navLinks.push('<a href="#menu">Menu</a>');
       if (tool.location) navLinks.push('<a href="#location">Location</a>');
       if (tool.faqs && tool.faqs.length) navLinks.push('<a href="#faqs">FAQs</a>');
       const navHTML = navLinks.length ? `<nav class="sticky-nav"><ul>${navLinks.map(l=>`<li>${l}</li>`).join('')}</ul></nav>` : '';
+
 
       // Hero image (use logo as fallback)
       const heroHTML = tool.logo ? `<img class="hero-img" src="${esc(tool.logo)}" alt="${esc(tool.name)}">` : '';
@@ -198,10 +200,59 @@
         hoursHTML = `<section id="hours" class="section"><h2>${esc(tool.name)} Opening Hours</h2><table class="hours-table"><tr><th>Day</th><th>Opening</th><th>Closing</th></tr>${rows}</table></section>`;
       }
 
+      // Menu section (restaurants only; renders if data exists)
+      let menuHTML = '';
+      if (tool.menu && Array.isArray(tool.menu.sections) && tool.menu.sections.length) {
+      // helper to render one section
+      const sectionHTML = (sec) => {
+      const itemsHTML = (sec.items || []).map(it => {
+      const badge = it.badge ? `<span class="menu-badge">${esc(it.badge)}</span>` : '';
+      const desc  = it.desc  ? `<div class="menu-item-desc">${esc(it.desc)}</div>` : '';
+      const price = it.price ? `<div class="menu-item-price">${esc(it.price)}</div>` : '';
+      return `
+        <div class="menu-item">
+          <div class="menu-item-main">
+            <div class="menu-item-name">${esc(it.name || '')}${badge}</div>
+            ${desc}
+          </div>
+          ${price}
+        </div>
+        `;
+        }).join('');
+
+      const note = sec.note ? `<p class="menu-section-note">${esc(sec.note)}</p>` : '';
+      return `
+      <div class="menu-section">
+        <h3 class="menu-section-title">${esc(sec.title || '')}</h3>
+        ${note}
+        <div class="menu-items">
+          ${itemsHTML || '<div class="menu-empty">Menu items coming soon.</div>'}
+        </div>
+      </div>
+      `;
+      };
+
+      const sections = tool.menu.sections.map(sectionHTML).join('');
+
+      // Optional “Full menu” external link if you have one
+      const fullMenuLink = (tool.actions && tool.actions.menu_url)
+      ? `<p class="menu-external"><a href="${esc(tool.actions.menu_url)}" target="_blank" rel="noopener">Full menu ↗</a></p>`
+      : '';
+
+      menuHTML = `
+      <section id="menu" class="section section-menu">
+      <h2>Menu</h2>
+      ${fullMenuLink}
+      ${sections}
+      </section>
+      `;
+      }
+
+
       // Location section
-let locationHTML = '';
-if (tool.location) {
-  const loc = tool.location;
+      let locationHTML = '';
+      if (tool.location) {
+      const loc = tool.location;
 
   // 1) Build a query (q) for the map: prefer address → lat,lng → place name
   const hasAddr = (loc.address || '').trim().length > 0;
@@ -274,7 +325,20 @@ if (tool.location) {
       `).join('');
       const relatedSection = `<hr class="sep" /><section><h2 style="font-size:1.1rem">Related places</h2><div class="related">${relHTML || '<div class="empty">No related places found.</div>'}</div></section>`;
 
-      wrap.innerHTML = headerHTML + navHTML + heroHTML + aboutHTML + ratingSection + sentimentHTML + bestTimesHTML + attributesHTML + hoursHTML + locationHTML + faqsHTML + relatedSection;
+      wrap.innerHTML = headerHTML
+      + navHTML
+      + heroHTML
+      + aboutHTML
+      + ratingSection
+      + sentimentHTML
+      + bestTimesHTML
+      + attributesHTML
+      + hoursHTML
+      + menuHTML
+      + locationHTML
+      + faqsHTML
+      + relatedSection;
+
 
       // Share button functionality
       const shareBtn = document.getElementById('share-link');
