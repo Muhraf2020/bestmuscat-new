@@ -1,40 +1,41 @@
 name: Add menu placeholders
 
 on:
-  workflow_dispatch:   # adds the "Run workflow" button in Actions
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"
 
 permissions:
-  contents: write      # allow the workflow to push changes
+  contents: write
 
 jobs:
-  run-script:
+  apply:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.x"
 
-      - name: Dry run (see summary)
+      - name: Install deps
+        run: python -m pip install --upgrade pip
+
+      - name: Dry run (see what would change)
         run: |
-          python scripts/maint/add_menu_placeholders.py --file bestmuscat-new/data/tools.json || true
+          python scripts/maint/add_menu_placeholders.py \
+            --file bestmuscat-new-main/data/tools.json || true
 
       - name: Apply changes
         run: |
-          python scripts/maint/add_menu_placeholders.py --file bestmuscat-new/data/tools.json --write
+          python scripts/maint/add_menu_placeholders.py \
+            --file bestmuscat-new-main/data/tools.json --write
 
-      - name: Commit & push if changed
+      - name: Commit & push (if any)
         run: |
-          set -e
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [[ -n "$(git status --porcelain)" ]]; then
-            git add bestmuscat-new/data/tools.json*
-            git commit -m "chore: add menu placeholders via GH Action"
-            git push
-          else
-            echo "No changes to commit."
-          fi
+          git add bestmuscat-new-main/data/tools.json
+          git diff --cached --quiet || git commit -m "chore: add menu placeholders"
+          git push
