@@ -18,10 +18,10 @@ jobs:
         id: findscripts
         run: |
           set -e
-          SCRIPT=$(git ls-files | grep -E '/scripts/maint/add_menu_placeholders\.py$' | head -n1 || true)
+          # Look for scripts/maint/add_menu_placeholders.py (no leading slash!)
+          SCRIPT=$(git ls-files | grep -E '(^|/)scripts/maint/add_menu_placeholders\.py$' | head -n1 || true)
           if [ -z "$SCRIPT" ]; then
             echo "❌ Could not find scripts/maint/add_menu_placeholders.py in the repo."
-            echo "Here are some files so you can spot the layout:"
             git ls-files | sed -n '1,200p'
             exit 1
           fi
@@ -32,18 +32,15 @@ jobs:
         id: findtools
         run: |
           set -e
-          # Try common locations and then fall back to a search
-          CANDIDATE=$( \
-            (test -f bestmuscat-new-main/data/tools.json && echo bestmuscat-new-main/data/tools.json) || \
-            (test -f bestmuscat-new/data/tools.json && echo bestmuscat-new/data/tools.json) || \
-            (test -f data/tools.json && echo data/tools.json) || \
-            true )
-          if [ -z "$CANDIDATE" ]; then
-            CANDIDATE=$(git ls-files | grep -E '/data/tools\.json$' | head -n1 || true)
+          # Your repo has it at data/tools.json
+          if [ -f data/tools.json ]; then
+            CANDIDATE="data/tools.json"
+          else
+            # Fallback search if layout changes later
+            CANDIDATE=$(git ls-files | grep -E '(^|/)data/tools\.json$' | head -n1 || true)
           fi
           if [ -z "$CANDIDATE" ]; then
             echo "❌ Could not find data/tools.json anywhere."
-            echo "Repo file listing (first 200 lines) to help debug:"
             git ls-files | sed -n '1,200p'
             exit 1
           fi
@@ -57,11 +54,13 @@ jobs:
 
       - name: Dry run (see what would change)
         run: |
-          python "${{ steps.findscripts.outputs.script }}" --file "${{ steps.findtools.outputs.file }}" || true
+          python "${{ steps.findscripts.outputs.script }}" \
+            --file "${{ steps.findtools.outputs.file }}" || true
 
       - name: Apply changes
         run: |
-          python "${{ steps.findscripts.outputs.script }}" --file "${{ steps.findtools.outputs.file }}" --write
+          python "${{ steps.findscripts.outputs.script }}" \
+            --file "${{ steps.findtools.outputs.file }}" --write
 
       - name: Commit & push (if any)
         run: |
